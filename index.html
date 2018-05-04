@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ADHC Filter Tool</title>
+  <!-- <link rel="import" href="https://sheetaki.now.sh/data?url=https://alabama.box.com/shared/static/6dafs5rq556dr7bv0yscpgvagui5a24w.xlsx&t=html"> -->
+  <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+  <script src="https://cdn.datatables.net/1.10.16/js/jquery.dataTables.min.js"></script>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.10.16/css/jquery.dataTables.min.css">
+  <link rel="stylesheet" href="bulma-no-table.css" />
+  <link rel="stylesheet" href="table.css" />
+  <style>
+    .panel { background-color: #fff; }
+    .section {padding: 0.5rem 1.5rem;}
+    .is-overflow {overflow: scroll !important;}
+  </style>
+</head>
+<body>
+<div id="TEST"></div>
+<section id="section-settings" class="section">
+    <!-- <div class="container"> -->
+        <div class="box">
+            <h1 class="subtitle">Spreadsheet</h1>
+            <div class="columns">
+                <div class="column">
+                    <input id="spreadsheet-url" class="input" type="text" value="https://alabama.box.com/shared/static/g0xdylphbjy2ga3b88dse2ttk65wy09f.xlsx" placeholder="Spreadsheet URL">
+                </div>
+                <div class="column is-narrow">
+                    <button id="load-btn" class="button is-primary">Load</button>
+                </div>
+                <div class="column is-narrow">
+                    <div class="select">
+                        <select id='sheet-select'>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        <!-- </div> -->
+    </div>
+</section>
+
+<section id="section-filter" class="section">
+    <div class="box">
+        <div class="columns">
+            <div class="column">
+                <h1 class="subtitle">Filter</h1>
+            </div>
+            <div class="column is-narrow">
+                <button id="filter-settings-open-btn" class="button is-primary">Filter Settings</button>
+            </div>
+        </div>
+
+
+        <div id="filters" class="field is-grouped is-grouped-multiline">
+        </div>
+    </div>
+</section>
+
+<section id="section-table" class="section">
+
+    <div class="box">
+        <div class="columns">
+            <div class="column">
+                <h1 class="subtitle hidden">Table</h1>
+            </div>
+            <div class="column is-narrow">
+                <button id="table-settings-open-btn" class="button is-primary">Table Settings</button>
+            </div>
+        </div>
+
+        <div id="data-container" class="double-scroll is-overflow">
+        </div>
+    </div>
+
+    <div id="table-settings-modal" class="modal">
+        <div class="modal-background"></div>
+        <div class="modal-card">
+            <header class="modal-card-head">
+                <p class="modal-card-title">Table Columns</p>
+                <button id="table-settings-close-btn" class="delete" aria-label="close"></button>
+            </header>
+            <section class="modal-card-body">
+                <h3 class="subtitle">Unselect column to hide</h3>
+                <div id='table-settings-container' class="panel">
+                    <!-- column names -->
+                </div>
+            </section>
+            <footer class="modal-card-foot">
+                <button id="table-settings-save-btn" class="button is-success">Save changes</button>
+                <button id="table-settings-cancel-btn" class="button">Cancel</button>
+                <button id="table-settings-reset-btn" class="button is-danger">Reset</button>
+            </footer>
+        </div>
+    </div>
+
+    <div id="filter-settings-modal" class="modal">
+        <div class="modal-background"></div>
+        <div class="modal-card">
+            <header class="modal-card-head">
+                <p class="modal-card-title">Filter Columns</p>
+                <button id="filter-settings-close-btn" class="delete" aria-label="close"></button>
+            </header>
+            <section class="modal-card-body">
+                <h3 class="subtitle">Select column to make that column filterable</h3>
+                <div id='filter-settings-container' class="panel">
+                    <!-- column names -->
+                </div>
+            </section>
+            <footer class="modal-card-foot">
+                <button id="filter-settings-save-btn" class="button is-success">Save</button>
+                <label id="filter-settings-toggle-all is-hidden" class="checkbox"><input type="checkbox">Toggle All</label>
+            </footer>
+        </div>
+    </div>
+
+</body>
+
+<script>
+
+function hideColumns(cols) {
+    $(document).ready(function(){
+
+        var uncheckedVals = $('.table-settings-cols:checkbox:not(:checked)').map(function() {
+            return $(this).attr('data-col-num');
+        }).get();
+
+        // console.log(uncheckedVals);
+        var table = $('#data').DataTable();
+
+        for ( var i=0 ; i<table.columns().header().length ; i++ ) {
+            // console.log(jQuery.inArray(i.toString(), uncheckedVals));
+            if(jQuery.inArray(i.toString(), uncheckedVals) !== -1) {
+                table.column(i).visible( false, false );
+                $('#filter-settings-enable-checkbox-col-'+i).prop('checked',false)
+            }
+            else {
+                table.column(i).visible( true, false );
+            }
+        }
+        buildFilterInputs();
+        table.columns.adjust().draw( false ); // adjust column sizing and redraw
+    });
+}
+
+function filterGlobal() {
+    $(document).ready(function(){
+        $('#data').DataTable().search(
+            $('#global_filter').val(),
+            $('#global_regex').prop('checked'),
+            $('#global_smart').prop('checked')
+        ).draw();
+    });
+}
+
+function filterColumn(i) {
+    $(document).ready(function(){
+        $('#data').DataTable().column( i ).search( $('#filter-input-col-'+i).val(), true, false).draw();
+    });
+}
+
+
+function loadTable ( url ) {
+    $( "#data-container" ).load( url, function() {
+
+        $('#data-container table').attr('id','data');   //set table element id
+
+        //add to import so it is a properly formated table. DataTables doesn't like it when there is not thead element
+        $( "#data tbody" ).children('tr').first().wrap( "<thead></thead>" );
+
+        $('#data').DataTable({
+            paging:   false,
+            stateSave: false,
+            responsive: true,
+        });
+
+        buildSettingsInputs();
+        buildFilterInputs();
+    });
+}
+
+function buildSettingsInputs() {
+    $(document).ready(function(){
+        var table = $('#data').DataTable();
+
+        $('#filter-settings-container').empty();
+        $('#table-settings-container').empty();
+
+        //create filter and table modal settings. Hide blank rows
+        $( "#data thead" ).children('tr').first().children().each(function( index ) {
+            var colName = $( this ).text().trim();
+
+            //Hide blank rows
+            if (colName == '' || colName == ' '){
+                table.column(index).visible( false, false )
+            }
+            else{
+                $('#filter-settings-container').append('<label class="panel-block"><input id="filter-settings-enable-checkbox-col-'+index+'" class="filter-settings-cols" type="checkbox" data-col-num="'+index+'" data-col-name="'+colName+'" checked>Col '+(index+1)+': '+colName+'</label>');
+                $('#table-settings-container').append('<label class="panel-block"><input id="table-settings-enable-checkbox-col-'+index+'" class="table-settings-cols" type="checkbox" data-col-num="'+index+'" data-col-name="'+colName+'" checked>Col '+(index+1)+': '+colName+'</label>');
+            }
+        });
+
+        // table.columns.adjust().draw( false );
+    });
+}
+
+function buildFilterInputs() {
+    $(document).ready(function(){
+        $('#filters').empty();
+
+        var checkedVals = $('.filter-settings-cols:checkbox:checked').map(function() {
+            return {'colName' : $(this).attr('data-col-name'), 'colNum' : $(this).attr('data-col-num') };
+        }).get();
+
+        for (var i = 0; i < checkedVals.length; i++) {
+            $( "#filters" ).append('<div id="filter-col'+checkedVals[i]['colNum']+'" data-column="'+checkedVals[i]['colNum']+'" class="control"><input id="filter-input-col-'+checkedVals[i]['colNum']+'" class="filter-column-input input" type="text" placeholder="Col '+(parseInt(checkedVals[i]['colNum'])+1)+': '+checkedVals[i]['colName']+'"></div>');
+        }
+    });
+}
+
+ $(document).ready(function() {
+    var convertServiceURL = 'https://sheetaki.now.sh/data?'
+
+    //when spreadsheet url input changes
+    $( "#spreadsheet-url" ).change(function() {
+        var spreadsheetURL = $("#spreadsheet-url").val()
+        if (spreadsheetURL != '') {
+            $( "#load-btn" ).prop( "disabled", false );
+        }
+        else {
+            $( "#load-btn" ).prop( "disabled", true );
+        }
+    });
+
+    //when load button clicked
+    $( "#load-btn" ).click(function() {
+        var spreadsheetURL = $("#spreadsheet-url").val()
+
+        $( "#load-btn" ).addClass('is-loading');
+        axios.get(convertServiceURL + 'url=' + spreadsheetURL+'&N=-1')
+            .then(function (response) {
+                // console.log(response.data);
+                var sheetNames = response.data.split("\n");
+
+                for (var i = 0; i < sheetNames.length; i++) {
+                    $("#sheet-select").append('<option value="' + i + '">'+sheetNames[i]+'</option>');
+                }
+
+                loadTable(convertServiceURL + 'url=' + spreadsheetURL + '&N=0&t=html');
+
+                $( "#load-btn" ).removeClass('is-loading');
+            })
+            .catch(function (error) {
+                console.log(error);
+                $( "#load-btn" ).removeClass('is-loading');
+            });
+    });
+
+    //when sheet selection changes
+    $( "#sheet-select" ).change(function() {
+        var spreadsheetURL = $("#spreadsheet-url").val()
+        var sheetNum = $("#sheet-select").val()
+        $( "#load-btn" ).addClass('is-loading');
+
+        loadTable(convertServiceURL + 'url=' + spreadsheetURL + '&N=' + sheetNum + '&t=html');
+        $( "#load-btn" ).removeClass('is-loading');
+    });
+
+
+
+    //filter settings modal
+    $( "#filter-settings-open-btn" ).click(function() {
+        $('#filter-settings-modal').addClass('is-active');
+    });
+
+    $( "#filter-settings-close-btn, #filter-settings-cancel-btn" ).click(function() {
+        $('#filter-settings-modal').removeClass('is-active');
+    });
+
+    $( "#filter-settings-save-btn" ).click(function() {
+        $('#filter-settings-modal').removeClass('is-active');
+        buildFilterInputs()
+    });
+
+    $( "#filter-settings-toggle-all" ).click(function() {
+        //TODO
+    });
+
+
+    //table settings modal
+    $( "#table-settings-open-btn" ).click(function() {
+        $('#table-settings-modal').addClass('is-active');
+    });
+
+    $( "#table-settings-close-btn, #filter-settings-cancel-btn" ).click(function() {
+        $('#table-settings-modal').removeClass('is-active');
+    });
+
+
+    $( "#table-settings-save-btn" ).click(function() {
+        $('#table-settings-modal').removeClass('is-active');
+        hideColumns()
+    });
+
+    $( "#table-settings-toggle-all" ).click(function() {
+        //TODO
+    });
+
+
+    //filter events
+    $('input.global_filter').on( 'keyup click', function () {
+        filterGlobal();
+    } );
+
+    $('#filters').on('keyup click', 'input.filter-column-input', function() {
+        filterColumn( $(this).parent().attr('data-column') );
+    });
+
+
+    $('input.column_filter').on( 'keyup click', function () {
+        filterColumn( $(this).parents('tr').attr('data-column') );
+    } );
+
+} );
+</script>
+</html>
